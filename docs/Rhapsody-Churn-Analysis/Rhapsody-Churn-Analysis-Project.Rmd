@@ -1,6 +1,6 @@
 ---
-title: "Rhapsody Churn Analysis-Group"
-author: "Liam Keefe, Alex Weirauch, Jullian Schrup, Sarah Diamond"
+title: "Rhapsody Payments - Churn Analysis"
+author: "Liam Keefe"
 date: "4/19/2021"
 output: html_document
 ---
