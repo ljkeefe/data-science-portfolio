@@ -1,6 +1,6 @@
 ---
-title: "Data 501 Final Project Markdown"
-author: "Liam Keefe & Connor Bailey"
+title: "DATA 501 Final"
+author: "Liam Keefe"
 date: "12/9/2021"
 output: 
   html_document: 
