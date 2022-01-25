@@ -1,6 +1,6 @@
 ---
 title: "Willamette University Data 501 Final"
-author: "Liam Keefe"
+author: "Liam Keefe & Connor Bailey"
 date: "12/9/2021"
 output: 
   html_document: 
