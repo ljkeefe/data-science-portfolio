@@ -1,0 +1,161 @@
+---
+title: "Rhapsody Churn Analysis -- Data Prep"
+subtitle: Rhapsody Churn Model Starter Code -- Data Preparation
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r set-options, fig.height=6.5, fig.width=9.1, message=FALSE, warning=FALSE}
+options(width=100)
+
+# Starter data preparation script for Rhapsody Churn Modeling
+
+# Suggested usage:
+#   Copy the required data file, RhapsodyCPTOrderSummary-010.csv into a 
+#     new project folder <folder>
+#   Change the working directory (setwd below) to point to the project <folder>
+#   Run the entire script as a block
+
+# Load required libraries
+
+library(tidyverse) # advanced plotting, dplyr, piping
+library(lubridate)
+library(GGally) # for scatterplot matrix
+library(RcmdrMisc) # for numSummary, stepwise
+library(ROCR) # for producing ROC and other prediction performance plots
+library(caret) # for confusion matrix analysis
+library(funModeling) # for data exploration
+
+# Set up file names
+
+ChurnData <- "RhapsodyCPTOrderSummary.csv"
+ChurnPrepped <- "ChurnFullPrepped-010.RData"
+
+########### BEGIN DATA PREPARATION
+
+# DATA ENTRY AND SUMMARIZATION
+
+# Read full data set, list -- names, structure, head,
+
+ChurnFull <- read.csv(ChurnData)
+glimpse(ChurnFull)
+
+# Clean up card brand / card type data, add to database
+#   First, check distribution of card brand and type in CPT data
+
+table(ChurnFull$CPTCardBrand, ChurnFull$CPTCardType)
+
+ChurnFull <- ChurnFull %>%
+  
+  #   Set up CardBrand
+  #     Use CPTCardBrand, if specified (not "None")
+  #     Otherwise, use PaymentSubTypeCode
+  
+  mutate(
+    CPTCardBrand = as.character(CPTCardBrand),
+    CPTCardType = as.character(CPTCardType),
+    PaymentSubTypeCode = as.character(PaymentSubTypeCode),
+    CardBrand = ifelse(CPTCardBrand != "None", 
+                       CPTCardBrand, PaymentSubTypeCode),
+    
+    # Clean up CardType
+    #   Remove leading numbers from codes
+    #   Map Check to Debit
+    
+    CardType = case_when(
+      CPTCardType == "0 - None"                         ~ "None",
+      CPTCardType == "1 - Credit"                       ~ "Credit", 
+      CPTCardType == "2 - Debit"                        ~ "Debit", 
+      CPTCardType == "3 - Check"                        ~ "Debit", 
+      CPTCardType == "5 - Pre-Paid"                     ~ "Prepaid", 
+      CPTCardType == "6 - Charge Card"                  ~ "Credit", 
+      CPTCardType == "7 - European Deferred Debit Card" ~ "Debit",
+      TRUE                                              ~ "None"
+    ),
+    
+    # Fill in CardType (Credit) for credit-only CardBrands -- AX, DI, PAYPAL
+    
+    CardType = ifelse(CardBrand == "AX" | CardBrand == "DI" | CardBrand == "PAYPAL", 
+                      "Credit", CardType),
+    CardBrand = as.factor(CardBrand),
+    CardType = as.factor(CardType)
+  )
+
+#   Check newly created CardBrand and CardType
+
+table(ChurnFull$CardBrand, ChurnFull$CardType)
+
+#   Set reference levels for CardBrand and CardType
+#     Sets VISA and Credit as the omitted factor levels in models
+#     CardBrand and CardType estimates are then interpretted relative to 
+#       these reference levels
+
+ChurnFull$CardBrand <- relevel(ChurnFull$CardBrand, ref = "VI")
+ChurnFull$CardType <- relevel(ChurnFull$CardType, ref = "Credit")
+
+# Add User date and history metrics
+#   Convert date strings from factor to date type
+#   Tenure, OrderDensity, Payment Friction, ChurnDensity
+
+ChurnFull <- ChurnFull %>%
+  mutate(
+    UserOrigSignupDate = ymd(UserOrigSignupDt),
+    SignUpDate = ymd(SignUpDt),
+    FirstBillDate = ymd(FirstBillDt),
+    LastPlayDate = ymd(LastPlayDt),
+    StopRequestDate = ymd(StopRequestDt),
+    CancelDate = ymd(CancelDt),
+    OrdDate = ymd(OrderDate),
+    UserFirstOrdDate = ymd(UserFirstOrderDate),
+    UserLastOrdDate = ymd(UserLastOrderDate),
+    SubFirstOrdDate = ymd(SubFirstOrderDate),
+    SubLastOrdDate = ymd(SubLastOrderDate),
+    
+    # Calculated  User-Level date features
+    #   Subscriber-Level features omitted
+    
+    UserTenure = as.numeric(round((OrdDate - UserOrigSignupDate) / 
+                                    365.25 * 12 + 1)),
+    UserWindow = as.numeric(round((UserLastOrdDate - UserFirstOrdDate) / 
+                                    365.25 * 12 + 1)),
+    USuccessDensity = (UserPaySuccess * MonthsPerBill) / UserWindow,
+    USDDensity = (UserPaySftDec * MonthsPerBill) / UserWindow,
+    UHDDensity = (UserPayHrdDec * MonthsPerBill) / UserWindow,
+    UChurnDensity = (UserChurns * MonthsPerBill) / UserWindow
+  )
+
+# Randomly split observations 80/20 into training and test samples
+#   Generate sample of indices
+
+set.seed(999999999)
+trainFrac <- 0.8
+allRows <- nrow(ChurnFull)
+trainSize <- round(trainFrac * allRows)
+trainIdx <- sample(allRows, trainSize)
+
+#   Label observations as Train or Test
+#   Add Train/Test labels to data base
+
+ChurnFull$TrainTest <- rep("Test", allRows)  # set all rows to Test
+ChurnFull$TrainTest[trainIdx] <- "Train"     # reset sampled rows to Train
+
+# Drop factor/character date forms
+#   Retain converted dates
+#   Sort records -- User ID, Subs ID, Order ID
+
+ChurnFull <- ChurnFull %>%
+  select(-UserOrigSignupDt, -(FirstBillDt:CancelDt), 
+         -SubFirstOrderDate, -SubLastOrderDate,
+         -UserFirstOrderDate, -UserLastOrderDate) %>%
+  arrange(UserPartyId, SubscriberServiceId, EcommOrderId)
+  
+glimpse(ChurnFull)
+
+# Save prepped data to .Rdata file for subsequent analysis
+
+save("ChurnFull", file = ChurnPrepped)
+
+########### END OF DATA PREPARATION
+
+```
