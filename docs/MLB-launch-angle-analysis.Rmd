@@ -1,6 +1,6 @@
 ---
-title: "Data 501 Final Project Markdown"
-author: "Liam Keefe & Connor Bailet"
+title: "Willamette University Data 501 Final"
+author: "Liam Keefe"
 date: "12/9/2021"
 output: 
   html_document: 
