@@ -1,0 +1,389 @@
+---
+title: "Rhapsody Churn Analysis-Group"
+author: "Liam Keefe, Alex Weirauch, Jullian Schrup, Sarah Diamond"
+date: "4/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+```{r}
+# Libraries (packages)
+library(tidyverse)
+library(dplyr)
+library(radiant)
+library(skimr)
+library(aod)
+library(caret)
+library(leaps)
+library(MASS)
+library(car)
+library(ROCR)
+library(gtools)
+```
+
+
+## The Data
+
+```{r}
+# Data
+Churn_Data <- ChurnFull
+glimpse(Churn_Data)
+
+# Separating into 75% and 25% Data-frames to Insure Replication
+Churn_DataTrain <- Churn_Data %>%
+  filter(TrainTest == "Train")
+Churn_DataTest <- Churn_Data %>%
+  filter(TrainTest == "Test")
+trainRows <- nrow(Churn_DataTrain)
+testRows <- nrow(Churn_DataTest)
+```
+
+
+# Effect of Card Brand on Churn
+
+
+## Card Brand ("CardBrand") Breakdown
+
+```{r}
+# Extracted Card Data
+CardsBrand <- Churn_DataTrain$CardBrand
+
+# Splitting Card Type into Numeric variables
+Rhap_PayCardData <- cbind(ifelse(CardsBrand == "VI", 1, 0), ifelse(CardsBrand == "MC", 1,0), ifelse(CardsBrand == "AX", 1, 0), ifelse(CardsBrand == "AMZ_FPS", 1, 0), ifelse(CardsBrand == "DI", 1,0), ifelse(CardsBrand == "PAYPAL", 1, 0))
+Rhap_PayCardData.df <- as.data.frame(Rhap_PayCardData)
+colnames(Rhap_PayCardData.df) = c("Visa", "MasterCard", "American Express", "Amazon", "Discover", "Paypal")
+
+# Skim Table of New Numeric Variables
+Card_Skim <- Rhap_PayCardData.df %>%
+  skim()
+Card_Skim
+```
+
+
+## Logistic Regression Analysis by Card Brand 
+
+``` {r}
+# Factoring and Organizing Card Brand column
+Churn_DataTrain$CardBrand <- factor(Churn_DataTrain$CardBrand)
+Churn_DataTrain$CardBrand <- relevel(Churn_DataTrain$CardBrand, "AMZ_FPS")
+
+# Logistic Regression "log(Churn) ~ Card Types"
+LogitChurn <- glm(Churn ~ CardBrand, data = Churn_DataTrain, family = binomial("logit"))
+summary(LogitChurn)
+
+# Residual Standard Error (RSE) and Goodness of Fit (GF) of Logistic Model
+RSE_LogitChurn<- as.data.frame(sqrt(summary(LogitChurn)$dispersion))
+Rsq_LogitChurn <- (1- (summary(LogitChurn)$deviance/summary(LogitChurn)$null.deviance))
+RSEGF_LogitChurn <- cbind(RSE_LogitChurn, Rsq_LogitChurn)
+colnames(RSEGF_LogitChurn) = c("Residual Standard Error", "R Squared")
+rownames(RSEGF_LogitChurn) = "Card Brand Model"
+RSEGF_LogitChurn
+
+#Display
+Display1 <- as.data.frame(cbind(summary(LogitChurn)$coefficients))
+colnames(Display1) = c("Coefficients", "Standard Error", "z-value", "p-value")
+Display1
+````
+
+
+## CB and CT ROC Chart
+``` {r}
+# Data-Frame for Predictions
+Churn4_Train <- dplyr::select(Churn_DataTrain,c(Churn, CardBrand))
+
+# Predictions based on Rhapsody Churn Data
+BPreds <- predict.glm(object = LogitChurn, newdata = Churn4_Train, type = "response")
+BPreds <- replace_na(BPreds, 0)
+
+# ROC Chart
+Bpredicts <- prediction(predictions = BPreds, labels = Churn_DataTrain$Churn)
+Bperf <- performance(Bpredicts, "tpr", "fpr")
+plot(Bperf)
+```
+
+# Card Brand and Type ("CardType")
+
+
+## Card Type Breakdown
+
+``` {r}
+# Extracted Type Data
+CardType <- Churn_DataTrain$CardType
+
+# Splitting Card Type into Numeric variables
+Rhap_PayCardTypeData <- cbind(ifelse(CardType == "None", 1, 0), ifelse(CardType == "Credit", 1,0), ifelse(CardType == "Debit", 1, 0), ifelse(CardType == "Prepaid", 1,0))
+Rhap_PayCardTypeData.df <- as.data.frame(Rhap_PayCardTypeData)
+colnames(Rhap_PayCardTypeData.df) = c("None", "Credit", "Debit", "Prepaid")
+
+# Skim Table of New Numeric Variables
+CardType_Skim <- Rhap_PayCardTypeData.df %>%
+  skim()
+CardType_Skim
+
+
+```
+
+
+## Logistic Regression Analysis by Card Brand and Type
+
+``` {r}
+# Factoring and Organizing Card Type column
+Churn_DataTrain$CardType <- factor(Churn_DataTrain$CardType)
+Churn_DataTrain$CardType <- relevel(Churn_DataTrain$CardType, "None")
+
+# Logistic Regression "log(Churn) ~ Card Brand + Card Type"
+LogitChurn2 <- glm(Churn ~ CardBrand + CardType, data = Churn_DataTrain, family = binomial("logit"))
+summary(LogitChurn2)
+
+# RSE and GF of Logistic Model
+RSE_LogitChurn2 <- as.data.frame(sqrt(summary(LogitChurn2)$dispersion))
+Rsq_LogitChurn2 <- (1- (summary(LogitChurn2)$deviance/summary(LogitChurn2)$null.deviance))
+RSEGF_LogitChurn2 <- cbind(RSE_LogitChurn2, Rsq_LogitChurn2)
+colnames(RSEGF_LogitChurn2) = c("Residual Standard Error", "R Squared")
+rownames(RSEGF_LogitChurn2) = "Card Brand and Type Model"
+RSEGF_LogitChurn2
+
+#Display
+Display2 <- as.data.frame(cbind(summary(LogitChurn2)$coefficients))
+colnames(Display2) = c("Coefficients", "Standard Error", "z-value", "p-value")
+Display2
+```
+
+
+## CB and CT ROC Chart
+``` {r}
+# Data-Frame for Predictions
+Churn3_Train <- dplyr::select(Churn_DataTrain,c(Churn, CardBrand, CardType))
+
+# Predictions based on Rhapsody Churn Data
+BTPreds <- predict.glm(object = LogitChurn2, newdata = Churn3_Train, type = "response")
+BTPreds <- replace_na(BTPreds, 0)
+
+# ROC Chart
+BTpredicts <- prediction(predictions = BTPreds, labels = Churn_DataTrain$Churn)
+BTperf <- performance(BTpredicts, "tpr", "fpr")
+plot(BTperf)
+```
+
+# Card Brand and Type as well as User Tenure and Success and Soft/Hard Decline Density
+
+
+## User and Subscription Tenure Breakdown
+
+``` {r}
+# User Tenure History
+Churn_DataTrain %>%
+  skim(UserTenure)
+
+```
+
+
+## User Success and Soft/Hard Decline Density Breakdown
+
+``` {r}
+# User Order History 
+  Churn_DataTrain %>%
+  skim(UserOrdSucces, UserOrdSftDec, UserOrdHrdDec, UserChurns)
+```
+
+
+## Regression Analysis by Card Brand, Card Type, and User History (Order Density and Tenures)
+
+``` {r}
+# Logistic Regression "log(Churn) ~ Card Brand + Card Type + User History"
+LogitChurn3 <- glm(Churn ~ CardBrand + CardType + USuccessDensity + USDDensity + UHDDensity + UserTenure, data = Churn_DataTrain, family = binomial("logit"))
+summary(LogitChurn3)
+
+# RSE and GF of Logistic Model
+RSE_LogitChurn3 <- as.data.frame(sqrt(summary(LogitChurn3)$dispersion))
+Rsq_LogitChurn3 <- (1- (summary(LogitChurn3)$deviance/summary(LogitChurn3)$null.deviance))
+RSEGF_LogitChurn3 <- cbind(RSE_LogitChurn3, Rsq_LogitChurn3)
+colnames(RSEGF_LogitChurn3) = c("Residual Standard Error", "R Squared")
+rownames(RSEGF_LogitChurn3) = "Card Brand, Card Type, and User History Model"
+RSEGF_LogitChurn3
+
+# Display
+Display3 <- as.data.frame(cbind(summary(LogitChurn3)$coefficients))
+colnames(Display3) = c("Coefficients", "Standard Error", "z-value", "p-value")
+Display3
+```
+
+
+## CB, CT, UH ROC Chart
+``` {r}
+# Data-Frame for Predictions
+Churn2_Train <- dplyr::select(Churn_DataTrain,c(Churn, CardBrand, CardType, UHDDensity, USDDensity, UserTenure, USuccessDensity))
+
+# Predictions based on Rhapsody Churn Data
+CTUPreds <- predict.glm(object = LogitChurn3, newdata = Churn2_Train, type = "response")
+CTUPreds <- replace_na(CTUPreds, 0)
+
+# ROC Chart
+CTUpredicts <- prediction(predictions = CTUPreds, labels = Churn_DataTrain$Churn)
+CTUperf <- performance(CTUpredicts, "tpr", "fpr")
+plot(CTUperf, col="blue")
+plot(BTperf, add=TRUE, col="red")
+plot(Bperf, add=TRUE, col="yellow")
+```
+
+
+# Extended Regression Analysis
+
+
+## Initial "Kitchen Sink" Model
+
+``` {r}
+# Re-leveling factors for large model
+Churn_DataTrain$MonthsPerBill <- as.factor(Churn_DataTrain$MonthsPerBill)
+Churn_DataTrain$MonthsPerBill <- relevel(Churn_DataTrain$MonthsPerBill, "1")
+Churn_DataTrain$ServiceTier <- factor(Churn_DataTrain$ServiceTier)
+Churn_DataTrain$ServiceTier <- relevel(Churn_DataTrain$ServiceTier, "FREE")
+
+# New Variables
+Churn_DataTrain <- Churn_DataTrain %>%
+  mutate(
+    LastPlayDate = if_else(is.na(LastPlayDate), UserOrigSignupDate, LastPlayDate),
+    LastPlayDate = if_else(LastPlayDate > OrdDate, OrdDate, LastPlayDate),
+    logUserOrderCount = log(UserOrderCount + 1),
+    logUserTenure = log(UserTenure + 1),
+    UChurnDen = UserChurns / UserOrderCount,
+    UHDDen = UserPayHrdDec / UserOrderCount,
+    UOrderDen = UserOrderCount / UserWindow,
+    UPayAttemptsPerOrder = UserPayAttempts/UserOrderCount,
+    UPTS89Den = UserPTStat89 / UserOrderCount,
+    UPTS05Den = UserPTStat05 / UserOrderCount,
+    UPTS14Den = UserPTStat14 / UserOrderCount,
+    UPTS56Den = UserPTStat56 / UserOrderCount,
+    UPTS52Den = UserPTStat52 / UserOrderCount,
+    UPTS12Den = UserPTStat12 / UserOrderCount,
+    UPTS33Den = UserPTStat33 / UserOrderCount,
+    UPTS41Den = UserPTStat41 / UserOrderCount,
+    UPTS04Den = UserPTStat04 / UserOrderCount,
+    UPTS89CL = UserTenure * UPTS89Den,
+    UPTS05CL = UserTenure * UPTS05Den,
+    UPTS14CL = UserTenure * UPTS14Den,
+    UPTS56CL = UserTenure * UPTS56Den,
+    UPTS52CL = UserTenure * UPTS52Den,
+    UPTS12CL = UserTenure * UPTS12Den,
+    UPTS33CL = UserTenure * UPTS33Den,
+    UPTS41CL = UserTenure * UPTS41Den,
+    UPTS04CL = UserTenure * UPTS04Den,
+    USuccessDen = UserPaySuccess / UserOrderCount,
+    USDDen = UserPaySftDec / UserOrderCount,
+    SinceLastPlay = as.numeric(round(OrdDate - LastPlayDate)),
+    RecentPlay = if_else(SinceLastPlay <= 30, "Yes", "No"),
+    RecentPlay = as.factor(RecentPlay),
+    RecentPlay = relevel(RecentPlay, ref = "No"),
+    LastPlay = case_when(
+      SinceLastPlay <=  30  ~ "Past 30 days",
+      SinceLastPlay <=  90  ~ "Past 90 days",
+      SinceLastPlay <= 365  ~ "Past year",
+      TRUE                  ~ "Over one year"
+      ),
+    LastPlay = as.factor(LastPlay),
+    LastPlay = relevel(LastPlay, ref = "Over one year"),
+    logSinceLastPlay = log(SinceLastPlay + 1)
+  )
+
+# Logistic Regression Model 
+Extended_Model <- glm(formula = Churn ~ CardBrand + CardType + LastPlayDate + logSinceLastPlay + logUserOrderCount + logUserTenure + MonthsPerBill + RecentPlay + ServiceTier + SinceLastPlay + UChurnDen + UHDDen + UOrderDen + UserOrderCount + UPayAttemptsPerOrder + UPTS89CL + UPTS05CL + UPTS14CL + UPTS56CL + UPTS52CL + UPTS12CL + UPTS33CL + UPTS41CL + UPTS04CL + UPTS89Den + UPTS05Den + UPTS14Den + UPTS56Den + UPTS52Den + UPTS12Den + UPTS33Den + UPTS41Den + UPTS04Den + USDDen + UserTenure + USuccessDen, data = Churn_DataTrain, family = binomial("logit"))
+summary(Extended_Model)
+
+# RSE and GF for Model
+RSE_LogitChurn4 <- as.data.frame(sqrt(summary(Extended_Model)$dispersion))
+Rsq_LogitChurn4 <- (1- (summary(Extended_Model)$deviance/summary(Extended_Model)$null.deviance))
+RSEGF_LogitChurn4 <- cbind(RSE_LogitChurn4, Rsq_LogitChurn4)
+colnames(RSEGF_LogitChurn4) = c("Residual Standard Error", "R Squared")
+rownames(RSEGF_LogitChurn4) = "Kitchen Sink Model"
+RSEGF_LogitChurn4
+
+#Diplay
+Display4 <- as.data.frame(cbind(summary(Extended_Model)$coefficients))
+colnames(Display4) = c("Coefficients", "Standard Error", "z-value", "p-value")
+Display4
+
+```
+
+
+## Kitchen Sink ROC Chart 
+
+``` {r}
+# Data-Frame for Predictions
+ChurnedTrain <- dplyr::select(Churn_DataTrain,c(Churn, CardBrand, CardType, LastPlayDate, logSinceLastPlay, logUserOrderCount, logUserTenure, MonthsPerBill, RecentPlay, ServiceTier, SinceLastPlay, UChurnDen, UHDDen, UOrderDen, UserOrderCount, UPayAttemptsPerOrder, UPTS89CL, UPTS05CL, UPTS14CL, UPTS56CL, UPTS52CL, UPTS12CL, UPTS33CL, UPTS41CL, UPTS04CL, UPTS89Den, UPTS05Den, UPTS14Den, UPTS56Den, UPTS52Den, UPTS12Den, UPTS33Den, UPTS41Den, UPTS04Den, USDDen, UserTenure, USuccessDen))
+
+# Predictions based on Rhapsody Churn Data
+KSPreds <- predict.glm(object = Extended_Model, newdata = ChurnedTrain, type = "response")
+KSPreds[is.na(KSPreds)] = 0
+KSPreds.df <- as.data.frame(KSPreds)
+KSInt <- t.test(KSPreds.df)
+KSInt.df <- as.data.frame(cbind(KSInt$conf.int[1], KSInt$estimate, KSInt$conf.int[2]))
+colnames(KSInt.df) = c("2.5% Lower Bound", "Mean", "97.5% Upper Bound")
+rownames(KSInt.df) = "Predicted Population Churn"
+KSInt.df
+
+# ROC Chart
+KSpredict <- prediction(predictions = KSPreds, labels = Churn_DataTrain$Churn)
+KSperf <- performance(KSpredict, "tpr", "fpr")
+plot(KSperf, col="grey")
+plot(CTUperf, add=TRUE, col="blue")
+plot(BTperf, add=TRUE, col="red")
+plot(Bperf, add=TRUE, col="yellow")
+```
+
+
+## Reducing the Kitchen Sink Model
+
+``` {r}
+# Stepwise Regression
+Step_Model <- stepAIC(Extended_Model, direction = "both", trace = FALSE)
+summary(Step_Model)
+
+# RSE and GF of Stepwise Model
+RSE_StepModel <- as.data.frame(sqrt(summary(Step_Model)$dispersion))
+Rsq_StepModel <- (1- (summary(Step_Model)$deviance/summary(Step_Model)$null.deviance))
+RSEGF_StepModel <- cbind(RSE_StepModel, Rsq_StepModel)
+colnames(RSEGF_StepModel) = c("Residual Standard Error", "R Squared")
+rownames(RSEGF_StepModel) = "lm(log(Churn) ~ Card Brand + Card Type + Success Density + Soft Decline Density + Hard Decline Density + User Tenure + Subscription Tenure)"
+RSEGF_StepModel
+
+#Display
+Display5 <- as.data.frame(cbind(summary(Step_Model)$coefficients))
+colnames(Display5) = c("Coefficients", "Standard Error", "z-value", "p-value")
+Display5
+
+#Display()
+summary(Step_Model)$coefficients %>%
+  filter()
+```
+
+
+## Reduced Kitchen Sink ROC Chart 
+
+``` {r}
+# Data-Frame for Predictions
+ChurnTrain <- dplyr::select(Churn_DataTrain,c(CardBrand, CardType, LastPlayDate, logSinceLastPlay, logUserOrderCount, logUserTenure, MonthsPerBill, RecentPlay, ServiceTier, SinceLastPlay, UHDDen, UOrderDen, UserOrderCount, UPayAttemptsPerOrder, UPTS89CL, UPTS14CL, UPTS89Den, UPTS14Den, UPTS56Den, UPTS52Den, UPTS12Den, UPTS33Den, UPTS41Den, USDDen, UserTenure, USuccessDen))
+
+# Predictions based on Rhapsody Churn Data
+RKSPreds <- predict.glm(object = Step_Model, newdata = ChurnTrain, type = "response")
+RKSPreds[is.na(RKSPreds)] = 0
+RKSPreds.df <- as.data.frame(RKSPreds)
+RKSInt <- t.test(RKSPreds.df)
+RKSInt.df <- as.data.frame(cbind(RKSInt$conf.int[1], RKSInt$estimate, RKSInt$conf.int[2]))
+colnames(RKSInt.df) = c("2.5% Lower Bound", "Mean", "97.5% Upper Bound")
+rownames(RKSInt.df) = "Predicted Population Churn with Reduced Model"
+RKSInt.df
+
+# ROC Chart
+RKSpredicts <- prediction(predictions = RKSPreds, labels = Churn_DataTrain$Churn)
+RKSperf <- performance(RKSpredicts, "tpr", "fpr")
+plot(RKSperf, col = "purple")
+plot(KSperf, add = TRUE, col = "grey")
+plot(CTUperf, add=TRUE, col = "blue")
+plot(BTperf, add=TRUE, col = "red")
+plot(Bperf, add=TRUE, col = "green")
+```
